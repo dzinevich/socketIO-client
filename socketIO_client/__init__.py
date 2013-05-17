@@ -1,5 +1,6 @@
 import requests
 import socket
+import requests
 from json import dumps, loads
 from threading import Thread, Event
 from time import sleep
@@ -95,9 +96,12 @@ class SocketIO(object):
         SocketIO('localhost', 8000, secure=True,
             proxies={'https': 'https://proxy.example.com:8080'})
         """
-        self._socketIO = _SocketIO(host, port, secure, headers, proxies)
-        self._namespaceByPath = {}
-        self.define(Namespace)
+        try:
+            self._socketIO = _SocketIO(host, port, secure, headers, proxies)
+            self._namespaceByPath = {}
+            self.define(Namespace)
+        except requests.exceptions.ConnectionError:
+            raise SocketIOConnectionError('Connection error')
 
         self._rhythmicThread = _RhythmicThread(
             self._socketIO.heartbeatInterval,
@@ -120,15 +124,17 @@ class SocketIO(object):
 
     @property
     def connected(self):
-        return self._socketIO.connected
+        if hasattr(self, '_socketIO'):
+            return self._socketIO.connected
 
     def disconnect(self, path='', close=True):
         if self.connected:
             self._socketIO.disconnect(path, close)
         if path:
             del self._namespaceByPath[path]
-        else:
+        elif hasattr(self, '_rhythmicThread'):
             self._rhythmicThread.cancel()
+        elif hasattr(self, '_listenerThread'):
             self._listenerThread.cancel()
 
     def define(self, Namespace, path=''):
@@ -419,8 +425,8 @@ class _SocketIO(object):
 
     @property
     def connected(self):
-        return self.connection.connected
-
+        if hasattr(self, 'connection'):
+            return self.connection.connected
 
 class SocketIOError(Exception):
     pass
